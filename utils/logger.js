@@ -1,89 +1,127 @@
 // utils/logger.js
-const pino = require('pino');
+// Simple, reliable logger without external dependencies
 
-// Create a custom log level system
-const customLevels = {
-  levels: {
-    fatal: 60,
-    error: 50,
-    warn: 40,
-    info: 30,
-    debug: 20,
-    trace: 10
-  },
-  colors: {
-    fatal: 'red',
-    error: 'red',
-    warn: 'yellow',
-    info: 'green',
-    debug: 'blue',
-    trace: 'gray'
-  }
+const logLevel = process.env.LOG_LEVEL || 'info';
+const levels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'];
+
+// Determine if we should log based on level
+const shouldLog = (level) => {
+  const levelIndex = levels.indexOf(level);
+  const currentIndex = levels.indexOf(logLevel);
+  return levelIndex <= currentIndex;
 };
 
-// Determine if we're in production
-const isProduction = process.env.NODE_ENV === 'production';
-const logLevel = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
+// Console colors
+const colors = {
+  fatal: '\x1b[31m', // red
+  error: '\x1b[31m', // red
+  warn: '\x1b[33m',  // yellow
+  info: '\x1b[32m',  // green
+  debug: '\x1b[36m', // cyan
+  trace: '\x1b[37m', // white
+  reset: '\x1b[0m'   // reset
+};
 
-// Create the logger instance
-const logger = pino({
-  level: logLevel,
-  customLevels: customLevels.levels,
-  useOnlyCustomLevels: false,
-  formatters: {
-    level: (label, number) => {
-      return { level: label.toUpperCase() };
+// Emojis for better visual identification
+const emojis = {
+  fatal: '💀',
+  error: '❌',
+  warn: '⚠️',
+  info: 'ℹ️',
+  debug: '🐛',
+  trace: '🔍'
+};
+
+// Main logger object
+const logger = {};
+
+// Create log methods for each level
+levels.forEach(level => {
+  logger[level] = (message, ...args) => {
+    if (shouldLog(level)) {
+      const timestamp = new Date().toLocaleString();
+      const emoji = emojis[level] || '';
+      const color = colors[level] || colors.reset;
+      
+      // Format the log message
+      const logMessage = `${color}[${timestamp}] ${emoji} ${level.toUpperCase()}: ${message}${colors.reset}`;
+      
+      // Use appropriate console method
+      const consoleMethod = level === 'error' || level === 'fatal' ? console.error : 
+                           level === 'warn' ? console.warn : console.log;
+      
+      consoleMethod(logMessage, ...args);
     }
-  },
-  timestamp: () => `,"time":"${new Date().toISOString()}"`,
-  transport: isProduction ? undefined : {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      levelFirst: true,
-      translateTime: 'SYS:yyyy-mm-dd HH:MM:ss',
-      ignore: 'pid,hostname',
-      customColors: customLevels.colors,
-      customLevels: Object.keys(customLevels.levels).join(','),
-      useOnlyCustomLevels: false
-    }
-  }
+  };
 });
 
-// Add custom methods for better logging
-logger.success = function (msg, ...args) {
-  this.info(`✅ ${msg}`, ...args);
+// Custom methods for specific log types
+logger.success = (message, ...args) => {
+  if (shouldLog('info')) {
+    const timestamp = new Date().toLocaleString();
+    console.log(`\x1b[32m[${timestamp}] ✅ SUCCESS: ${message}\x1b[0m`, ...args);
+  }
 };
 
-logger.fail = function (msg, ...args) {
-  this.error(`❌ ${msg}`, ...args);
+logger.fail = (message, ...args) => {
+  if (shouldLog('error')) {
+    const timestamp = new Date().toLocaleString();
+    console.error(`\x1b[31m[${timestamp}] ❌ FAIL: ${message}\x1b[0m`, ...args);
+  }
 };
 
-logger.warning = function (msg, ...args) {
-  this.warn(`⚠️ ${msg}`, ...args);
+logger.warning = (message, ...args) => {
+  if (shouldLog('warn')) {
+    const timestamp = new Date().toLocaleString();
+    console.warn(`\x1b[33m[${timestamp}] ⚠️ WARNING: ${message}\x1b[0m`, ...args);
+  }
 };
 
-logger.loading = function (msg, ...args) {
-  this.info(`⏳ ${msg}`, ...args);
+logger.loading = (message, ...args) => {
+  if (shouldLog('info')) {
+    const timestamp = new Date().toLocaleString();
+    console.log(`\x1b[36m[${timestamp}] ⏳ LOADING: ${message}\x1b[0m`, ...args);
+  }
 };
 
-logger.command = function (cmd, user, ...args) {
-  this.debug(`📝 Command: ${cmd} by ${user}`, ...args);
+logger.command = (cmd, user, ...args) => {
+  if (shouldLog('debug')) {
+    const timestamp = new Date().toLocaleString();
+    console.log(`\x1b[35m[${timestamp}] 📝 COMMAND: ${cmd} by ${user}\x1b[0m`, ...args);
+  }
 };
 
-logger.plugin = function (name, action, ...args) {
-  this.debug(`🧩 Plugin ${name}: ${action}`, ...args);
+logger.plugin = (name, action, ...args) => {
+  if (shouldLog('debug')) {
+    const timestamp = new Date().toLocaleString();
+    console.log(`\x1b[34m[${timestamp}] 🧩 PLUGIN: ${name} - ${action}\x1b[0m`, ...args);
+  }
 };
 
-logger.connection = function (status, ...args) {
-  this.info(`📱 Connection: ${status}`, ...args);
+logger.connection = (status, ...args) => {
+  if (shouldLog('info')) {
+    const timestamp = new Date().toLocaleString();
+    console.log(`\x1b[36m[${timestamp}] 📱 CONNECTION: ${status}\x1b[0m`, ...args);
+  }
+};
+
+logger.database = (action, ...args) => {
+  if (shouldLog('debug')) {
+    const timestamp = new Date().toLocaleString();
+    console.log(`\x1b[35m[${timestamp}] 💾 DATABASE: ${action}\x1b[0m`, ...args);
+  }
+};
+
+logger.api = (endpoint, ...args) => {
+  if (shouldLog('debug')) {
+    const timestamp = new Date().toLocaleString();
+    console.log(`\x1b[34m[${timestamp}] 🌐 API: ${endpoint}\x1b[0m`, ...args);
+  }
 };
 
 // Test the logger
-if (process.env.NODE_ENV !== 'test') {
-  logger.info('Logger initialized successfully');
-  logger.debug(`Log level set to: ${logLevel}`);
-  logger.debug(`Environment: ${process.env.NODE_ENV || 'development'}`);
-}
+logger.info('Custom logger initialized successfully');
+logger.debug(`Log level set to: ${logLevel}`);
+logger.debug(`Environment: ${process.env.NODE_ENV || 'development'}`);
 
 module.exports = logger;
