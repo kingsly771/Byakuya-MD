@@ -1,4 +1,4 @@
-// index.js - Pairing Code Version for Katabump Terminal
+// index.js - Complete fixed version with proper logger handling
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@adiwajshing/baileys');
 const logger = require('./utils/logger');
 const messageHandler = require('./handlers/message');
@@ -14,25 +14,48 @@ class ByakuyaBot {
         this.plugins = [];
         this.authInfoPath = 'auth_info';
         this.pairingCode = null;
+        
+        // Create a proper silent logger for Baileys
+        this.silentLogger = this.createSilentLogger();
+    }
+
+    createSilentLogger() {
+        // Create a complete silent logger that has all required methods
+        const silentLogger = {
+            trace: () => {},
+            debug: () => {},
+            info: () => {},
+            warn: () => {},
+            error: () => {},
+            fatal: () => {},
+            // The crucial fix: child() method must return a logger with the same structure
+            child: () => this.createSilentLogger()
+        };
+        return silentLogger;
     }
 
     async initialize() {
         try {
-            logger.info('🚀 Starting Byakuya MD with Pairing Code...');
+            logger.info('🚀 Starting Byakuya MD WhatsApp Bot...');
+            logger.debug('Initialization started');
             
             await this.ensureAuthDirectory();
             await this.loadPlugins();
             await this.connectToWhatsApp();
             
+            logger.success('Bot initialization completed successfully');
+
         } catch (error) {
-            logger.fail('Failed to initialize: ' + error.message);
-            throw error;
+            logger.fail('Failed to initialize bot: ' + error.message);
+            logger.debug('Error stack:', error.stack);
+            process.exit(1);
         }
     }
 
     async ensureAuthDirectory() {
         try {
             await fs.access(this.authInfoPath);
+            logger.debug('Auth directory exists');
         } catch {
             await fs.mkdir(this.authInfoPath, { recursive: true });
             logger.info('Created auth directory');
@@ -43,80 +66,131 @@ class ByakuyaBot {
         try {
             logger.loading('Loading plugins...');
             this.plugins = await pluginLoader.loadPlugins('./plugins');
-            logger.success(`Loaded ${this.plugins.length} plugins`);
+            
+            if (this.plugins.length === 0) {
+                logger.warning('No plugins loaded');
+            } else {
+                logger.success(`Successfully loaded ${this.plugins.length} plugins`);
+            }
         } catch (error) {
-            logger.error('Plugin loading error:', error.message);
+            logger.error('Failed to load plugins:', error.message);
         }
     }
 
     async connectToWhatsApp() {
         try {
-            logger.loading('Connecting to WhatsApp...');
+            logger.loading('Initializing WhatsApp connection...');
             
             const { state, saveCreds } = await useMultiFileAuthState(this.authInfoPath);
             
-            // Generate pairing code
-            this.pairingCode = await this.generatePairingCode();
-            
             this.sock = makeWASocket({
-                printQRInTerminal: false, // Disable QR code
+                printQRInTerminal: false, // We'll handle pairing codes manually
                 auth: state,
                 generateHighQualityLinkPreview: true,
                 markOnlineOnConnect: true,
-                logger: { level: 'silent' },
+                logger: this.silentLogger, // Use the fixed silent logger
                 browser: ['Byakuya MD', 'Chrome', '1.0.0'],
                 connectTimeoutMs: 60000,
-                // Enable pairing code
-                shouldIgnoreJid: (jid) => jid === 'status@broadcast'
+                keepAliveIntervalMs: 20000,
+                // WhatsApp connection options
+                syncFullHistory: false,
+                linkPreviewImageThumbnailWidth: 192,
+                transactionOpts: {
+                    maxCommitRetries: 10,
+                    delayBetweenTriesMs: 3000
+                }
             });
 
+            // Handle credentials saving
             this.sock.ev.on('creds.update', saveCreds);
+
+            // Set up all event handlers
             this.setupEventHandlers();
 
+            logger.info('Waiting for pairing code...');
+
         } catch (error) {
-            logger.fail('Connection failed: ' + error.message);
+            logger.fail('Failed to connect to WhatsApp: ' + error.message);
             throw error;
         }
     }
 
-    async generatePairingCode() {
-        return new Promise((resolve) => {
-            // Generate a random 6-digit pairing code
-            const code = Math.floor(100000 + Math.random() * 900000).toString();
-            resolve(code);
-        });
-    }
-
     setupEventHandlers() {
+        // Connection event handler
         this.sock.ev.on('connection.update', (update) => {
             this.handleConnectionUpdate(update);
         });
 
-        // Handle pairing code events
+        // Message event handler (only when connected)
         this.sock.ev.on('connection.update', (update) => {
-            if (update.pairingCode) {
-                this.handlePairingCode(update.pairingCode);
+            if (update.connection === 'open' && !this.isConnected) {
+                this.handleConnectionOpen();
+                
+                // Start handling messages only after connection is open
+                this.sock.ev.on('messages.upsert', async (m) => {
+                    await this.handleMessages(m);
+                });
+            }
+        });
+
+        // Handle errors
+        this.sock.ev.on('connection.update', (update) => {
+            if (update.lastDisconnect?.error) {
+                this.handleConnectionError(update.lastDisconnect.error);
             }
         });
     }
 
     handleConnectionUpdate(update) {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr, pairingCode } = update;
 
+        logger.debug('Connection update:', {
+            connection: connection,
+            hasPairingCode: !!pairingCode,
+            hasQR: !!qr,
+            lastDisconnect: lastDisconnect ? lastDisconnect.error?.message : 'none'
+        });
+
+        // Handle pairing code
+        if (pairingCode) {
+            this.handlePairingCode(pairingCode);
+        }
+
+        // Handle QR code (fallback)
+        if (qr) {
+            this.handleQRCode(qr);
+        }
+
+        // Handle connection states
         switch (connection) {
             case 'open':
-                this.handleConnectionOpen();
+                if (!this.isConnected) {
+                    this.handleConnectionOpen();
+                }
                 break;
+                
             case 'close':
                 this.handleConnectionClose(lastDisconnect);
                 break;
+                
             case 'connecting':
-                logger.loading('Connecting to WhatsApp...');
+                logger.loading('Connecting to WhatsApp servers...');
                 break;
+                
+            case 'connecting':
+                logger.connection('Reconnecting...');
+                break;
+                
+            default:
+                if (connection) {
+                    logger.connection(`Status: ${connection}`);
+                }
         }
     }
 
     handlePairingCode(pairingCode) {
+        this.pairingCode = pairingCode;
+        
         logger.connection('🔐 PAIRING CODE GENERATED');
         logger.connection('📱 Use this code to link your device');
         
@@ -128,27 +202,25 @@ class ByakuyaBot {
         console.log('║                                              ║');
         console.log('╚══════════════════════════════════════════════╝');
         
-        console.log('\n📋 HOW TO USE PAIRING CODE:');
-        console.log('1. Open WhatsApp on your phone');
-        console.log('2. Go to Settings → Linked Devices');
-        console.log('3. Tap "Link a Device"');
-        console.log('4. Tap "Use pairing code instead"');
-        console.log('5. Enter the code above');
-        console.log('6. Wait for connection confirmation');
+        console.log('\n📋 HOW TO USE:');
+        console.log('1. Open WhatsApp → Settings → Linked Devices');
+        console.log('2. Tap "Link a Device" → "Use pairing code instead"');
+        console.log('3. Enter the code above');
+        console.log('4. Wait for confirmation');
         
-        console.log('\n⏰ Code will expire in 20 seconds');
-        console.log('🔄 New code will be generated if needed');
+        console.log('\n⏰ Code expires in 20 seconds');
+    }
+
+    handleQRCode(qr) {
+        // Fallback if pairing code isn't available
+        logger.connection('QR code received (fallback)');
+        console.log('QR code string:', qr.substring(0, 50) + '...');
     }
 
     handleConnectionOpen() {
         this.isConnected = true;
-        logger.success('✅ SUCCESSFULLY PAIRED WITH WHATSAPP!');
+        logger.success('✅ SUCCESSFULLY CONNECTED TO WHATSAPP!');
         logger.info('🤖 Bot is now ready to receive commands');
-        
-        // Start message handling
-        this.sock.ev.on('messages.upsert', async (m) => {
-            await this.handleMessages(m);
-        });
         
         this.showBotStatus();
     }
@@ -156,10 +228,10 @@ class ByakuyaBot {
     showBotStatus() {
         console.log('\n✨ BYAKUYA MD STATUS:');
         console.log('✅ Connected: Yes');
-        console.log('🔐 Auth: Paired with code');
         console.log(`📦 Plugins: ${this.plugins.length} loaded`);
-        console.log('🌐 Status: Operational');
-        console.log('\n💡 Type .help for commands');
+        console.log('🌐 Mode: Pairing Code');
+        console.log('⏰ Status: Operational');
+        console.log('\n💡 Type .help for available commands');
     }
 
     handleConnectionClose(lastDisconnect) {
@@ -167,30 +239,43 @@ class ByakuyaBot {
         const error = lastDisconnect?.error;
 
         if (error) {
-            const statusCode = error.output?.statusCode;
+            logger.error('Connection closed with error:', error.message);
             
-            if (statusCode === DisconnectReason.loggedOut) {
-                logger.fail('❌ Logged out. Please restart the bot');
-                // Clear auth and generate new pairing code
-                this.clearAuthAndRestart();
-            } else {
-                logger.warning('Connection lost. Reconnecting in 5s...');
-                setTimeout(() => this.reconnect(), 5000);
+            const statusCode = error.output?.statusCode;
+            switch (statusCode) {
+                case DisconnectReason.loggedOut:
+                    logger.fail('❌ Logged out from WhatsApp');
+                    this.clearAuthAndRestart();
+                    break;
+                    
+                case DisconnectReason.connectionLost:
+                case DisconnectReason.connectionClosed:
+                    logger.warning('Connection lost. Reconnecting in 5s...');
+                    setTimeout(() => this.reconnect(), 5000);
+                    break;
+                    
+                case DisconnectReason.restartRequired:
+                    logger.warning('Restart required. Reconnecting...');
+                    setTimeout(() => this.reconnect(), 2000);
+                    break;
+                    
+                default:
+                    logger.warning(`Disconnect reason: ${statusCode}. Reconnecting in 10s...`);
+                    setTimeout(() => this.reconnect(), 10000);
             }
         } else {
-            logger.warning('Connection closed. Reconnecting...');
+            logger.warning('Connection closed. Reconnecting in 5s...');
             setTimeout(() => this.reconnect(), 5000);
         }
     }
 
-    async clearAuthAndRestart() {
-        try {
-            logger.info('Clearing authentication data...');
-            await fs.rm(this.authInfoPath, { recursive: true, force: true });
-            logger.info('Auth data cleared. Restarting...');
-            setTimeout(() => this.initialize(), 2000);
-        } catch (error) {
-            logger.error('Failed to clear auth data:', error.message);
+    handleConnectionError(error) {
+        logger.error('Connection error:', error.message);
+        
+        if (error.message.includes('timeout')) {
+            logger.warning('Network timeout - check your internet connection');
+        } else if (error.message.includes('ENOTFOUND')) {
+            logger.warning('DNS error - cannot connect to WhatsApp servers');
         }
     }
 
@@ -200,96 +285,106 @@ class ByakuyaBot {
         try {
             await messageHandler(this.sock, m, this.plugins, {});
         } catch (error) {
-            logger.error('Message error:', error.message);
+            logger.error('Error handling message:', error.message);
+        }
+    }
+
+    async clearAuthAndRestart() {
+        try {
+            logger.info('Clearing authentication data...');
+            await fs.rm(this.authInfoPath, { recursive: true, force: true });
+            logger.info('Auth data cleared. Restarting in 3 seconds...');
+            setTimeout(() => {
+                logger.info('Restarting bot...');
+                this.initialize();
+            }, 3000);
+        } catch (error) {
+            logger.error('Failed to clear auth data:', error.message);
         }
     }
 
     async reconnect() {
         try {
-            logger.loading('🔄 Reconnecting...');
+            logger.loading('🔄 Attempting to reconnect...');
+            // Close existing connection if any
+            if (this.sock) {
+                await this.sock.end();
+            }
             await this.connectToWhatsApp();
         } catch (error) {
-            logger.error('Reconnect failed:', error.message);
+            logger.error('Reconnection failed:', error.message);
+            logger.warning('Retrying in 10 seconds...');
             setTimeout(() => this.reconnect(), 10000);
         }
     }
 
-    // Method to manually generate new pairing code
-    async generateNewPairingCode() {
-        try {
-            this.pairingCode = await this.generatePairingCode();
-            this.handlePairingCode(this.pairingCode);
-            return this.pairingCode;
-        } catch (error) {
-            logger.error('Failed to generate pairing code:', error.message);
-            return null;
-        }
-    }
-}
-
-// Pairing code command handler (add to your message handler)
-function handlePairingCommand(sock, message, bot) {
-    const text = message.message?.conversation || '';
-    
-    if (text.toLowerCase() === '/pairingcode') {
-        bot.generateNewPairingCode().then(code => {
-            if (code) {
-                sock.sendMessage(message.key.remoteJid, {
-                    text: `🔐 New pairing code: ${code}\n\nUse this in WhatsApp → Linked Devices → Link a Device → Use pairing code`
-                }, { quoted: message });
+    // Clean shutdown
+    async shutdown() {
+        logger.info('Shutting down bot gracefully...');
+        this.isConnected = false;
+        
+        if (this.sock) {
+            try {
+                await this.sock.end();
+                logger.success('WhatsApp connection closed');
+            } catch (error) {
+                logger.error('Error closing connection:', error.message);
             }
-        });
-        return true;
+        }
+        
+        process.exit(0);
     }
-    
-    return false;
 }
 
-// Update your message handler to include pairing commands
-async function enhancedMessageHandler(sock, m, plugins, store, bot) {
-    if (!m.messages || m.messages.length === 0) return;
-    
-    const message = m.messages[0];
-    
-    // Check for pairing commands first
-    if (handlePairingCommand(sock, message, bot)) {
-        return;
-    }
-    
-    // Then handle normal messages
-    // ... your existing message handling code
+// Process signal handlers
+function setupProcessHandlers(bot) {
+    process.on('SIGINT', async () => {
+        logger.info('Received SIGINT. Shutting down...');
+        await bot.shutdown();
+    });
+
+    process.on('SIGTERM', async () => {
+        logger.info('Received SIGTERM. Shutting down...');
+        await bot.shutdown();
+    });
+
+    process.on('uncaughtException', (error) => {
+        logger.fail('Uncaught Exception: ' + error.message);
+        logger.debug('Exception stack:', error.stack);
+        process.exit(1);
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+        logger.fail('Unhandled Rejection at:', promise);
+        logger.debug('Reason:', reason);
+        process.exit(1);
+    });
 }
 
 // Main execution
 async function main() {
     try {
         console.log('\n╔══════════════════════════════════════════════╗');
-        console.log('║           BYAKUYA MD - PAIRING CODE           ║');
-        console.log('║            WhatsApp Bot Starting...           ║');
+        console.log('║           BYAKUYA MD WHATSAPP BOT             ║');
+        console.log('║               Pairing Code Edition            ║');
         console.log('╚══════════════════════════════════════════════╝');
         console.log('\n');
 
         const bot = new ByakuyaBot();
+        setupProcessHandlers(bot);
+        
         await bot.initialize();
 
     } catch (error) {
-        console.error('FATAL ERROR:', error.message);
+        logger.fail('Fatal error during startup: ' + error.message);
         process.exit(1);
     }
 }
 
-// Enhanced process handling
-process.on('SIGINT', () => {
-    logger.info('Shutdown signal received');
-    process.exit(0);
-});
-
-process.on('uncaughtException', (error) => {
-    logger.error('Crash:', error.message);
+// Start the bot with error handling
+main().catch(error => {
+    console.error('CRITICAL ERROR:', error.message);
     process.exit(1);
 });
-
-// Start the bot
-main().catch(console.error);
 
 module.exports = ByakuyaBot;
