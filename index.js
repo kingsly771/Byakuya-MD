@@ -1,7 +1,7 @@
-// index.js - Fixed version
+// index.js - Simplified version without store
 const { Boom } = require('@hapi/boom');
 const makeWASocket = require('@adiwajshing/baileys').default;
-const { useMultiFileAuthState, makeInMemoryStore } = require('@adiwajshing/baileys');
+const { useMultiFileAuthState } = require('@adiwajshing/baileys');
 const qrcode = require('qrcode-terminal');
 const logger = require('./utils/logger');
 const messageHandler = require('./handlers/message');
@@ -11,48 +11,15 @@ const config = require('./config');
 
 require('dotenv').config();
 
-// Initialize store for message handling - FIXED approach
-let store;
-try {
-    // Try the new way first (for newer Baileys versions)
-    if (typeof makeInMemoryStore === 'function') {
-        store = makeInMemoryStore();
-    } else {
-        // Fallback for older versions or if function doesn't exist
-        const { default: makeStore } = require('@adiwajshing/baileys/lib/Store/make-in-memory-store');
-        store = makeStore();
-    }
-} catch (error) {
-    logger.error('Failed to create store:', error.message);
-    // Create a simple mock store if all else fails
-    store = {
-        bind: () => {},
-        readFromFile: () => {},
-        writeToFile: () => {},
-        // Add other necessary methods as empty functions
-    };
-}
-
-// Try to read existing store, but don't crash if it doesn't exist
-try {
-    if (store && typeof store.readFromFile === 'function') {
-        store.readFromFile('./baileys_store.json');
-        logger.info('Loaded existing message store');
-    }
-} catch (error) {
-    logger.warning('No existing message store found or error loading:', error.message);
-}
-
-// Save store to file every 10 seconds if store supports it
-if (store && typeof store.writeToFile === 'function') {
-    setInterval(() => {
-        try {
-            store.writeToFile('./baileys_store.json');
-        } catch (error) {
-            logger.error('Failed to save message store:', error.message);
-        }
-    }, 10000);
-}
+// Create a simple mock store since makeInMemoryStore is causing issues
+const mockStore = {
+    bind: () => logger.debug('Store binding called (mock)'),
+    readFromFile: () => logger.debug('Store read called (mock)'),
+    writeToFile: () => logger.debug('Store write called (mock)'),
+    messages: [],
+    chats: [],
+    contacts: []
+};
 
 async function startBot() {
     try {
@@ -69,11 +36,11 @@ async function startBot() {
         const { state, saveCreds } = await useMultiFileAuthState('auth_info');
         
         const sock = makeWASocket({
-            printQRInTerminal: false, // We'll handle QR display ourselves
+            printQRInTerminal: false,
             auth: state,
             generateHighQualityLinkPreview: true,
             markOnlineOnConnect: false,
-            // Use minimal logging for Baileys to avoid issues
+            // Use minimal logging for Baileys
             logger: {
                 trace: () => {},
                 debug: () => {},
@@ -85,11 +52,6 @@ async function startBot() {
             browser: ['Byakuya MD', 'Chrome', '1.0.0']
         });
 
-        // Bind store to socket events if store exists
-        if (store && typeof store.bind === 'function') {
-            store.bind(sock.ev);
-        }
-
         // Handle connection events
         connectionHandler(sock, saveCreds, () => {
             logger.success('✅ WhatsApp connection established successfully');
@@ -97,7 +59,7 @@ async function startBot() {
             // Success callback - start message handling
             sock.ev.on('messages.upsert', async (m) => {
                 try {
-                    await messageHandler(sock, m, plugins, store);
+                    await messageHandler(sock, m, plugins, mockStore);
                 } catch (error) {
                     logger.error('Error in message handler:', error.message);
                 }
@@ -119,8 +81,8 @@ async function startBot() {
             if (connection === 'close') {
                 const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== 401;
                 if (shouldReconnect) {
-                    logger.warning('Connection closed. Reconnecting...');
-                    setTimeout(startBot, 5000); // Reconnect after 5 seconds
+                    logger.warning('Connection closed. Reconnecting in 5 seconds...');
+                    setTimeout(startBot, 5000);
                 } else {
                     logger.fail('Connection refused. Invalid credentials. Please restart the bot.');
                     process.exit(1);
@@ -137,65 +99,31 @@ async function startBot() {
     }
 }
 
-// Handle process termination gracefully
+// Handle process termination
 process.on('SIGINT', () => {
     logger.info('Shutting down Byakuya MD gracefully...');
-    try {
-        if (store && typeof store.writeToFile === 'function') {
-            store.writeToFile('./baileys_store.json');
-            logger.success('Message store saved successfully');
-        }
-    } catch (error) {
-        logger.error('Failed to save message store:', error.message);
-    }
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     logger.info('Received SIGTERM. Shutting down...');
-    try {
-        if (store && typeof store.writeToFile === 'function') {
-            store.writeToFile('./baileys_store.json');
-        }
-    } catch (error) {
-        logger.error('Failed to save message store:', error.message);
-    }
     process.exit(0);
 });
 
 process.on('uncaughtException', (error) => {
     logger.fail('Uncaught Exception: ' + error.message);
-    logger.debug('Exception details:', error);
-    try {
-        if (store && typeof store.writeToFile === 'function') {
-            store.writeToFile('./baileys_store.json');
-        }
-    } catch (saveError) {
-        logger.error('Failed to save message store:', saveError.message);
-    }
     process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
     logger.fail('Unhandled Rejection at:', promise);
     logger.debug('Reason:', reason);
-    try {
-        if (store && typeof store.writeToFile === 'function') {
-            store.writeToFile('./baileys_store.json');
-        }
-    } catch (error) {
-        logger.error('Failed to save message store:', error.message);
-    }
     process.exit(1);
 });
 
 // Start the bot
 logger.info('Initializing Byakuya MD...');
-logger.debug('Node.js version:', process.version);
-logger.debug('Platform:', process.platform);
-
 startBot().catch(error => {
     logger.fail('Failed to start bot: ' + error.message);
-    logger.debug('Startup error details:', error);
     process.exit(1);
 });
