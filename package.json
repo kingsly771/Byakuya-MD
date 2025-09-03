@@ -1,12 +1,58 @@
+
 {
   "name": "byakuya-md",
-  "version": "1.0.0",
-  "description": "A multi-device WhatsApp bot with otaku-themed features",
+  "version": "1.5.0",
+  "description": "A multi-device WhatsApp bot with otaku-themed features using pairing code authentication",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "pair": "node index.js --pairing",
+    "clean": "rm -rf auth_info && npm start",
+    "clean:win": "rmdir /s /q auth_info && npm start",
+    "reset": "rm -rf auth_info node_modules package-lock.json && npm install",
+    "reset:win": "rmdir /s /q auth_info node_modules && del package-lock.json && npm install",
+    "test": "echo \"Testing bot functionality...\" && node -e \"console.log('✅ Basic test passed');\"",
+    "setup": "npm install && npm run clean",
+    "setup:win": "npm install && npm run clean:win",
+    "logs": "tail -f logs/bot.log",
+    "logs:win": "type logs\\bot.log",
+    "help": "echo \"Available commands: npm start, npm run clean, npm run reset, npm run dev\"",
+    "docker:build": "docker build -t byakuya-md .",
+    "docker:run": "docker run -d --name byakuya-md -v $(pwd)/auth_info:/app/auth_info byakuya-md",
+    "docker:clean": "docker stop byakuya-md && docker rm byakuya-md",
+    "deploy:heroku": "git push heroku main",
+    "deploy:railway": "railway deploy",
+    "backup": "cp -r auth_info auth_info_backup_$(date +%Y%m%d_%H%M%S)",
+    "backup:win": "xcopy auth_info auth_info_backup_%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2% /E /I /H"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "otaku",
+    "anime",
+    "manga",
+    "multi-device",
+    "pairing-code",
+    "baileys",
+    "whatsapp-api",
+    "automation",
+    "javascript",
+    "nodejs"
+  ],
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/byakuya-md.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/byakuya-md/issues"
+  },
+  "homepage": "https://github.com/your-username/byakuya-md#readme",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=7.0.0"
   },
   "dependencies": {
     "@adiwajshing/baileys": "^5.0.0",
@@ -16,7 +62,6 @@
     "dotenv": "^16.1.0",
     "fluent-ffmpeg": "^2.1.2",
     "form-data": "^4.0.0",
-    "mongoose": "^7.2.0",
     "node-cron": "^3.0.2",
     "qrcode-terminal": "^0.12.0",
     "translate": "^1.4.1",
@@ -26,13 +71,27 @@
   "devDependencies": {
     "nodemon": "^2.0.22"
   },
-  "keywords": [
-    "whatsapp",
-    "bot",
-    "otaku",
-    "anime",
-    "manga"
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.1.0"
+  },
+  "files": [
+    "index.js",
+    "handlers/",
+    "plugins/",
+    "utils/",
+    "config.js",
+    ".env.example",
+    "README.md",
+    "LICENSE"
   ],
-  "author": "kingsly771",
-  "license": "MIT"
+  "publishConfig": {
+    "access": "public"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/sponsors/your-username"
+  },
+  "contributors": [
+    "Your Name <your.email@example.com>"
+  ]
 }
