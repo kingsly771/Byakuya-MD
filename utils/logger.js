@@ -1,4 +1,4 @@
-// utils/logger.js - Fixed version with child method
+// utils/logger.js - Fixed with child() method
 const logLevel = process.env.LOG_LEVEL || 'info';
 const levels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'];
 
@@ -53,28 +53,35 @@ levels.forEach(level => {
   };
 });
 
-// Add child method that Baileys expects
-logger.child = function() {
-  // Return a new logger instance with the same methods
+// ADD THIS - Baileys requires child() method
+logger.child = function (bindings = {}) {
+  // Create a new logger instance that preserves all methods
   const childLogger = {};
   
+  // Copy all log levels
   levels.forEach(level => {
     childLogger[level] = (message, ...args) => {
-      this[level](message, ...args);
+      const context = bindings.context ? `[${bindings.context}] ` : '';
+      this[level](`${context}${message}`, ...args);
     };
   });
   
   // Copy custom methods
-  childLogger.success = this.success;
-  childLogger.fail = this.fail;
-  childLogger.warning = this.warning;
-  childLogger.loading = this.loading;
-  childLogger.command = this.command;
-  childLogger.plugin = this.plugin;
-  childLogger.connection = this.connection;
-  childLogger.database = this.database;
-  childLogger.api = this.api;
-  childLogger.child = this.child; // Recursive child method
+  childLogger.success = (message, ...args) => this.success(message, ...args);
+  childLogger.fail = (message, ...args) => this.fail(message, ...args);
+  childLogger.warning = (message, ...args) => this.warning(message, ...args);
+  childLogger.loading = (message, ...args) => this.loading(message, ...args);
+  childLogger.command = (cmd, user, ...args) => this.command(cmd, user, ...args);
+  childLogger.plugin = (name, action, ...args) => this.plugin(name, action, ...args);
+  childLogger.connection = (status, ...args) => this.connection(status, ...args);
+  childLogger.database = (action, ...args) => this.database(action, ...args);
+  childLogger.api = (endpoint, ...args) => this.api(endpoint, ...args);
+  
+  // Important: child() must return a logger that also has child()
+  childLogger.child = (newBindings) => {
+    const mergedBindings = { ...bindings, ...newBindings };
+    return this.child(mergedBindings);
+  };
   
   return childLogger;
 };
@@ -147,5 +154,9 @@ logger.api = (endpoint, ...args) => {
 logger.info('Custom logger initialized successfully');
 logger.debug(`Log level set to: ${logLevel}`);
 logger.debug(`Environment: ${process.env.NODE_ENV || 'development'}`);
+
+// Test the child method (for verification)
+const testChildLogger = logger.child({ context: 'TEST' });
+testChildLogger.info('Child logger is working');
 
 module.exports = logger;
