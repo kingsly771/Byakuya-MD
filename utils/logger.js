@@ -1,6 +1,4 @@
-// utils/logger.js
-// Simple, reliable logger without external dependencies
-
+// utils/logger.js - Fixed version with child method
 const logLevel = process.env.LOG_LEVEL || 'info';
 const levels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'];
 
@@ -54,6 +52,32 @@ levels.forEach(level => {
     }
   };
 });
+
+// Add child method that Baileys expects
+logger.child = function() {
+  // Return a new logger instance with the same methods
+  const childLogger = {};
+  
+  levels.forEach(level => {
+    childLogger[level] = (message, ...args) => {
+      this[level](message, ...args);
+    };
+  });
+  
+  // Copy custom methods
+  childLogger.success = this.success;
+  childLogger.fail = this.fail;
+  childLogger.warning = this.warning;
+  childLogger.loading = this.loading;
+  childLogger.command = this.command;
+  childLogger.plugin = this.plugin;
+  childLogger.connection = this.connection;
+  childLogger.database = this.database;
+  childLogger.api = this.api;
+  childLogger.child = this.child; // Recursive child method
+  
+  return childLogger;
+};
 
 // Custom methods for specific log types
 logger.success = (message, ...args) => {
