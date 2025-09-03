@@ -1,30 +1,40 @@
-
 {
   "name": "byakuya-md",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "description": "A multi-device WhatsApp bot with otaku-themed features using pairing code authentication",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "pair": "node index.js --pairing",
-    "clean": "rm -rf auth_info && npm start",
-    "clean:win": "rmdir /s /q auth_info && npm start",
-    "reset": "rm -rf auth_info node_modules package-lock.json && npm install",
-    "reset:win": "rmdir /s /q auth_info node_modules && del package-lock.json && npm install",
-    "test": "echo \"Testing bot functionality...\" && node -e \"console.log('✅ Basic test passed');\"",
+    "dev": "nodemon index.js --ext js,json",
+    "dev:debug": "LOG_LEVEL=debug nodemon index.js --ext js,json",
+    "pair": "node index.js",
+    "clean": "rm -rf auth_info && echo '✅ Auth data cleared' && npm start",
+    "clean:win": "rmdir /s /q auth_info && echo ✅ Auth data cleared && npm start",
+    "reset": "rm -rf auth_info node_modules package-lock.json && npm install && echo '✅ Complete reset done'",
+    "reset:win": "rmdir /s /q auth_info node_modules && del package-lock.json && npm install && echo ✅ Complete reset done",
+    "test": "node -e \"console.log('✅ Basic test passed'); require('./utils/logger').info('Logger test passed');\"",
+    "test:plugins": "node -e \"require('./plugins/loader').loadPlugins('./plugins').then(plugins => console.log('✅ Plugins test passed:', plugins.length + ' loaded'));\"",
     "setup": "npm install && npm run clean",
     "setup:win": "npm install && npm run clean:win",
-    "logs": "tail -f logs/bot.log",
-    "logs:win": "type logs\\bot.log",
-    "help": "echo \"Available commands: npm start, npm run clean, npm run reset, npm run dev\"",
+    "logs": "tail -f -n 50 logs/bot.log 2>/dev/null || echo 'No log file found'",
+    "logs:win": "type logs\\bot.log 2>nul || echo No log file found",
+    "help": "echo \"📋 Available commands: npm start, npm run dev, npm run clean, npm run reset, npm run setup\"",
     "docker:build": "docker build -t byakuya-md .",
-    "docker:run": "docker run -d --name byakuya-md -v $(pwd)/auth_info:/app/auth_info byakuya-md",
-    "docker:clean": "docker stop byakuya-md && docker rm byakuya-md",
+    "docker:run": "docker run -d --name byakuya-md -v $(pwd)/auth_info:/app/auth_info -v $(pwd)/logs:/app/logs byakuya-md",
+    "docker:clean": "docker stop byakuya-md 2>/dev/null || true && docker rm byakuya-md 2>/dev/null || true && echo '✅ Docker cleanup done'",
+    "docker:logs": "docker logs -f byakuya-md",
     "deploy:heroku": "git push heroku main",
     "deploy:railway": "railway deploy",
-    "backup": "cp -r auth_info auth_info_backup_$(date +%Y%m%d_%H%M%S)",
-    "backup:win": "xcopy auth_info auth_info_backup_%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2% /E /I /H"
+    "backup": "cp -r auth_info auth_info_backup_$(date +%Y%m%d_%H%M%S) && echo '✅ Backup created'",
+    "backup:win": "xcopy auth_info auth_info_backup_%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2% /E /I /H >nul && echo ✅ Backup created",
+    "status": "echo \"🤖 Bot Status:\" && ps aux | grep node | grep index.js || echo \"Not running\"",
+    "status:win": "echo 🤖 Bot Status: && tasklist /fi \"imagename eq node.exe\" /fo table || echo Not running",
+    "restart": "npm run clean",
+    "kill": "pkill -f \"node index.js\" || echo \"No process found\"",
+    "kill:win": "taskkill /f /im node.exe 2>nul || echo No node process found",
+    "update": "git pull && npm install && npm run clean",
+    "version": "echo \"Byakuya MD v$(node -p 'require(\"./package.json\").version')\"",
+    "postinstall": "echo \"✅ Dependencies installed. Run 'npm start' to begin!\""
   },
   "keywords": [
     "whatsapp",
@@ -38,18 +48,20 @@
     "whatsapp-api",
     "automation",
     "javascript",
-    "nodejs"
+    "nodejs",
+    "byakuya",
+    "whatsapp-bot"
   ],
-  "author": "Your Name <your.email@example.com>",
+  "author": "kingsly771 <godricken@gmail.com>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/byakuya-md.git"
+    "url": "https://github.com/kingsly771/byakuya-md.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/byakuya-md/issues"
+    "url": "https://github.com/kingsly771/byakuya-md/issues"
   },
-  "homepage": "https://github.com/your-username/byakuya-md#readme",
+  "homepage": "https://github.com/kingsly771/byakuya-md#readme",
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=7.0.0"
@@ -72,7 +84,9 @@
     "nodemon": "^2.0.22"
   },
   "optionalDependencies": {
-    "ffmpeg-static": "^5.1.0"
+    "ffmpeg-static": "^5.1.0",
+    "pino": "^8.14.1",
+    "pino-pretty": "^10.2.0"
   },
   "files": [
     "index.js",
@@ -82,16 +96,38 @@
     "config.js",
     ".env.example",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "Dockerfile",
+    "ecosystem.config.js"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "funding": {
     "type": "individual",
     "url": "https://github.com/sponsors/your-username"
   },
   "contributors": [
-    "Your Name <your.email@example.com>"
-  ]
+     <your.email@example.com>"
+  ],
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "private": false,
+  "preferGlobal": false,
+  "bin": {
+    "byakuya-md": "./index.js"
+  },
+  "directories": {
+    "lib": "handlers",
+    "plugins": "plugins",
+    "utils": "utils"
+  }
 }
