@@ -1,23 +1,39 @@
 {
   "name": "byakuya-md",
   "version": "1.0.0",
-  "description": "A multi-device WhatsApp bot with otaku-themed features",
+  "description": "A multi-device WhatsApp bot with otaku-themed features built with Node.js and Baileys",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "setup": "npm install && npm run build",
+    "build": "echo 'No build process required'",
+    "heroku-postbuild": "echo 'Skip build process for Heroku'"
   },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "otaku",
+    "anime",
+    "manga",
+    "multi-device",
+    "baileys"
+  ],
+  "author": "kingsly771",
+  "license": "MIT",
   "dependencies": {
     "@adiwajshing/baileys": "^5.0.0",
+    "@hapi/boom": "^10.0.0",
     "axios": "^1.4.0",
     "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.1.0",
     "fluent-ffmpeg": "^2.1.2",
     "form-data": "^4.0.0",
-    "giphy-js-sdk-core": "^1.0.6",
     "mongoose": "^7.2.0",
     "node-cron": "^3.0.2",
+    "pino": "^8.14.1",
+    "pino-pretty": "^10.2.0",
     "qrcode-terminal": "^0.12.0",
     "translate": "^1.4.1",
     "ytdl-core": "^4.11.2",
@@ -26,7 +42,19 @@
   "devDependencies": {
     "nodemon": "^2.0.22"
   },
-  "keywords": ["whatsapp", "bot", "otaku", "anime", "manga"],
-  "author": "Your Name",
-  "license": "MIT"
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=7.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kingsly771/byakuya-md.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kingsly771/byakuya-md/issues"
+  },
+  "homepage": "https://github.com/kingsly771/byakuya-md#readme",
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.1.0"
+  }
 }
