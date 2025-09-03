@@ -1,4 +1,4 @@
-// index.js - Updated with the new logger
+// index.js - Fixed version
 const { Boom } = require('@hapi/boom');
 const makeWASocket = require('@adiwajshing/baileys').default;
 const { useMultiFileAuthState, makeInMemoryStore } = require('@adiwajshing/baileys');
@@ -11,18 +11,8 @@ const config = require('./config');
 
 require('dotenv').config();
 
-// Initialize store for message handling
-const store = makeInMemoryStore({ 
-    // Use a simple logger for Baileys to avoid issues
-    logger: {
-        trace: () => {},
-        debug: () => {},
-        info: () => {},
-        warn: () => {},
-        error: () => {},
-        fatal: () => {}
-    }
-});
+// Initialize store for message handling - FIXED: Removed invalid logger parameter
+const store = makeInMemoryStore();
 
 // Try to read existing store, but don't crash if it doesn't exist
 try {
@@ -112,13 +102,6 @@ async function startBot() {
                 }
             } else if (connection === 'open') {
                 logger.success('Connection established successfully');
-            }
-        });
-
-        // Handle unexpected errors
-        sock.ev.on('connection.update', (update) => {
-            if (update.connection === 'close' && update.lastDisconnect?.error) {
-                logger.error('Connection error:', update.lastDisconnect.error.message);
             }
         });
 
