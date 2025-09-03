@@ -11,25 +11,48 @@ const config = require('./config');
 
 require('dotenv').config();
 
-// Initialize store for message handling - FIXED: Removed invalid logger parameter
-const store = makeInMemoryStore();
+// Initialize store for message handling - FIXED approach
+let store;
+try {
+    // Try the new way first (for newer Baileys versions)
+    if (typeof makeInMemoryStore === 'function') {
+        store = makeInMemoryStore();
+    } else {
+        // Fallback for older versions or if function doesn't exist
+        const { default: makeStore } = require('@adiwajshing/baileys/lib/Store/make-in-memory-store');
+        store = makeStore();
+    }
+} catch (error) {
+    logger.error('Failed to create store:', error.message);
+    // Create a simple mock store if all else fails
+    store = {
+        bind: () => {},
+        readFromFile: () => {},
+        writeToFile: () => {},
+        // Add other necessary methods as empty functions
+    };
+}
 
 // Try to read existing store, but don't crash if it doesn't exist
 try {
-    store.readFromFile('./baileys_store.json');
-    logger.info('Loaded existing message store');
+    if (store && typeof store.readFromFile === 'function') {
+        store.readFromFile('./baileys_store.json');
+        logger.info('Loaded existing message store');
+    }
 } catch (error) {
-    logger.warning('No existing message store found, creating new one');
+    logger.warning('No existing message store found or error loading:', error.message);
 }
 
-// Save store to file every 10 seconds
-setInterval(() => {
-    try {
-        store.writeToFile('./baileys_store.json');
-    } catch (error) {
-        logger.error('Failed to save message store:', error.message);
-    }
-}, 10000);
+// Save store to file every 10 seconds if store supports it
+if (store && typeof store.writeToFile === 'function') {
+    setInterval(() => {
+        try {
+            store.writeToFile('./baileys_store.json');
+        } catch (error) {
+            logger.error('Failed to save message store:', error.message);
+        }
+    }, 10000);
+}
 
 async function startBot() {
     try {
@@ -56,14 +79,16 @@ async function startBot() {
                 debug: () => {},
                 info: () => {},
                 warn: () => {},
-                error: (error) => logger.error('Baileys Error:', error),
-                fatal: (error) => logger.fail('Baileys Fatal:', error)
+                error: (error) => logger.error('Baileys Error:', error.message),
+                fatal: (error) => logger.fail('Baileys Fatal:', error.message)
             },
             browser: ['Byakuya MD', 'Chrome', '1.0.0']
         });
 
-        // Bind store to socket events
-        store.bind(sock.ev);
+        // Bind store to socket events if store exists
+        if (store && typeof store.bind === 'function') {
+            store.bind(sock.ev);
+        }
 
         // Handle connection events
         connectionHandler(sock, saveCreds, () => {
@@ -116,8 +141,10 @@ async function startBot() {
 process.on('SIGINT', () => {
     logger.info('Shutting down Byakuya MD gracefully...');
     try {
-        store.writeToFile('./baileys_store.json');
-        logger.success('Message store saved successfully');
+        if (store && typeof store.writeToFile === 'function') {
+            store.writeToFile('./baileys_store.json');
+            logger.success('Message store saved successfully');
+        }
     } catch (error) {
         logger.error('Failed to save message store:', error.message);
     }
@@ -127,7 +154,9 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
     logger.info('Received SIGTERM. Shutting down...');
     try {
-        store.writeToFile('./baileys_store.json');
+        if (store && typeof store.writeToFile === 'function') {
+            store.writeToFile('./baileys_store.json');
+        }
     } catch (error) {
         logger.error('Failed to save message store:', error.message);
     }
@@ -138,7 +167,9 @@ process.on('uncaughtException', (error) => {
     logger.fail('Uncaught Exception: ' + error.message);
     logger.debug('Exception details:', error);
     try {
-        store.writeToFile('./baileys_store.json');
+        if (store && typeof store.writeToFile === 'function') {
+            store.writeToFile('./baileys_store.json');
+        }
     } catch (saveError) {
         logger.error('Failed to save message store:', saveError.message);
     }
@@ -149,7 +180,9 @@ process.on('unhandledRejection', (reason, promise) => {
     logger.fail('Unhandled Rejection at:', promise);
     logger.debug('Reason:', reason);
     try {
-        store.writeToFile('./baileys_store.json');
+        if (store && typeof store.writeToFile === 'function') {
+            store.writeToFile('./baileys_store.json');
+        }
     } catch (error) {
         logger.error('Failed to save message store:', error.message);
     }
