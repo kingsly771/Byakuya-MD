@@ -1,10 +1,8 @@
-// index.js - Optimized for Katabump Terminal
+// index.js - Pairing Code Version for Katabump Terminal
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@adiwajshing/baileys');
-const qrcode = require('qrcode-terminal');
 const logger = require('./utils/logger');
 const messageHandler = require('./handlers/message');
 const pluginLoader = require('./plugins/loader');
-const path = require('path');
 const fs = require('fs').promises;
 
 require('dotenv').config();
@@ -15,23 +13,17 @@ class ByakuyaBot {
         this.isConnected = false;
         this.plugins = [];
         this.authInfoPath = 'auth_info';
-        this.isKatabump = process.env.KATABUMP === 'true' || process.platform === 'linux';
+        this.pairingCode = null;
     }
 
     async initialize() {
         try {
-            logger.info('🚀 Starting Byakuya MD on Katabump Terminal...');
-            
-            if (this.isKatabump) {
-                logger.info('📦 Environment: Katabump Terminal');
-            }
+            logger.info('🚀 Starting Byakuya MD with Pairing Code...');
             
             await this.ensureAuthDirectory();
             await this.loadPlugins();
             await this.connectToWhatsApp();
             
-            logger.success('Bot initialization completed');
-
         } catch (error) {
             logger.fail('Failed to initialize: ' + error.message);
             throw error;
@@ -63,14 +55,19 @@ class ByakuyaBot {
             
             const { state, saveCreds } = await useMultiFileAuthState(this.authInfoPath);
             
+            // Generate pairing code
+            this.pairingCode = await this.generatePairingCode();
+            
             this.sock = makeWASocket({
-                printQRInTerminal: !this.isKatabump, // Disable terminal QR on Katabump
+                printQRInTerminal: false, // Disable QR code
                 auth: state,
                 generateHighQualityLinkPreview: true,
                 markOnlineOnConnect: true,
                 logger: { level: 'silent' },
                 browser: ['Byakuya MD', 'Chrome', '1.0.0'],
-                connectTimeoutMs: 60000
+                connectTimeoutMs: 60000,
+                // Enable pairing code
+                shouldIgnoreJid: (jid) => jid === 'status@broadcast'
             });
 
             this.sock.ev.on('creds.update', saveCreds);
@@ -82,19 +79,29 @@ class ByakuyaBot {
         }
     }
 
+    async generatePairingCode() {
+        return new Promise((resolve) => {
+            // Generate a random 6-digit pairing code
+            const code = Math.floor(100000 + Math.random() * 900000).toString();
+            resolve(code);
+        });
+    }
+
     setupEventHandlers() {
         this.sock.ev.on('connection.update', (update) => {
             this.handleConnectionUpdate(update);
         });
+
+        // Handle pairing code events
+        this.sock.ev.on('connection.update', (update) => {
+            if (update.pairingCode) {
+                this.handlePairingCode(update.pairingCode);
+            }
+        });
     }
 
     handleConnectionUpdate(update) {
-        const { connection, lastDisconnect, qr } = update;
-
-        // KATABUMP-FRIENDLY QR CODE HANDLING
-        if (qr) {
-            this.handleQRCodeForKatabump(qr);
-        }
+        const { connection, lastDisconnect } = update;
 
         switch (connection) {
             case 'open':
@@ -104,62 +111,39 @@ class ByakuyaBot {
                 this.handleConnectionClose(lastDisconnect);
                 break;
             case 'connecting':
-                logger.loading('Connecting...');
+                logger.loading('Connecting to WhatsApp...');
                 break;
         }
     }
 
-    handleQRCodeForKatabump(qr) {
-        logger.connection('🔐 AUTHENTICATION REQUIRED');
-        logger.connection('📱 Scan QR code with WhatsApp');
+    handlePairingCode(pairingCode) {
+        logger.connection('🔐 PAIRING CODE GENERATED');
+        logger.connection('📱 Use this code to link your device');
         
-        if (this.isKatabump) {
-            // KATABUMP-SPECIFIC QR HANDLING
-            console.log('\n╔══════════════════════════════════════════════╗');
-            console.log('║           KATABUMP TERMINAL DETECTED          ║');
-            console.log('║     QR code may not display properly         ║');
-            console.log('╚══════════════════════════════════════════════╝');
-            
-            // Method 1: Try basic QR display
-            try {
-                console.log('\n📋 Attempting QR code display:');
-                qrcode.generate(qr, { small: true });
-            } catch (error) {
-                console.log('❌ QR display failed, using alternative methods');
-            }
-            
-            // Method 2: Show QR code as clickable link
-            console.log('\n🌐 Alternative method:');
-            console.log('1. Visit: https://qrcode.tec-it.com/en');
-            console.log('2. Choose "Text" option');
-            console.log('3. Paste the QR code text below:');
-            console.log('\n📋 QR CODE TEXT (copy this):');
-            console.log('═'.repeat(50));
-            console.log(qr);
-            console.log('═'.repeat(50));
-            
-            // Method 3: Provide direct instructions
-            console.log('\n📱 QUICK SETUP:');
-            console.log('1. Open WhatsApp → Linked Devices → Link a Device');
-            console.log('2. Use another device to scan the QR code');
-            console.log('3. Or manually enter the code above');
-            
-        } else {
-            // Standard terminal QR display
-            try {
-                qrcode.generate(qr, { small: false });
-            } catch (error) {
-                logger.error('QR display failed:', error.message);
-            }
-        }
+        console.log('\n╔══════════════════════════════════════════════╗');
+        console.log('║              WHATSAPP PAIRING CODE            ║');
+        console.log('╠══════════════════════════════════════════════╣');
+        console.log('║                                              ║');
+        console.log(`║               ${pairingCode}                 ║`);
+        console.log('║                                              ║');
+        console.log('╚══════════════════════════════════════════════╝');
         
-        console.log('\n⏰ QR code expires in 20 seconds');
+        console.log('\n📋 HOW TO USE PAIRING CODE:');
+        console.log('1. Open WhatsApp on your phone');
+        console.log('2. Go to Settings → Linked Devices');
+        console.log('3. Tap "Link a Device"');
+        console.log('4. Tap "Use pairing code instead"');
+        console.log('5. Enter the code above');
+        console.log('6. Wait for connection confirmation');
+        
+        console.log('\n⏰ Code will expire in 20 seconds');
+        console.log('🔄 New code will be generated if needed');
     }
 
     handleConnectionOpen() {
         this.isConnected = true;
-        logger.success('✅ CONNECTED TO WHATSAPP!');
-        logger.info('🤖 Bot is now operational');
+        logger.success('✅ SUCCESSFULLY PAIRED WITH WHATSAPP!');
+        logger.info('🤖 Bot is now ready to receive commands');
         
         // Start message handling
         this.sock.ev.on('messages.upsert', async (m) => {
@@ -172,9 +156,9 @@ class ByakuyaBot {
     showBotStatus() {
         console.log('\n✨ BYAKUYA MD STATUS:');
         console.log('✅ Connected: Yes');
+        console.log('🔐 Auth: Paired with code');
         console.log(`📦 Plugins: ${this.plugins.length} loaded`);
-        console.log('🌐 Server: Katabump Terminal');
-        console.log('⏰ Uptime: Just started');
+        console.log('🌐 Status: Operational');
         console.log('\n💡 Type .help for commands');
     }
 
@@ -186,7 +170,9 @@ class ByakuyaBot {
             const statusCode = error.output?.statusCode;
             
             if (statusCode === DisconnectReason.loggedOut) {
-                logger.fail('❌ Logged out. Please delete auth_info/ and restart');
+                logger.fail('❌ Logged out. Please restart the bot');
+                // Clear auth and generate new pairing code
+                this.clearAuthAndRestart();
             } else {
                 logger.warning('Connection lost. Reconnecting in 5s...');
                 setTimeout(() => this.reconnect(), 5000);
@@ -194,6 +180,17 @@ class ByakuyaBot {
         } else {
             logger.warning('Connection closed. Reconnecting...');
             setTimeout(() => this.reconnect(), 5000);
+        }
+    }
+
+    async clearAuthAndRestart() {
+        try {
+            logger.info('Clearing authentication data...');
+            await fs.rm(this.authInfoPath, { recursive: true, force: true });
+            logger.info('Auth data cleared. Restarting...');
+            setTimeout(() => this.initialize(), 2000);
+        } catch (error) {
+            logger.error('Failed to clear auth data:', error.message);
         }
     }
 
@@ -216,37 +213,63 @@ class ByakuyaBot {
             setTimeout(() => this.reconnect(), 10000);
         }
     }
+
+    // Method to manually generate new pairing code
+    async generateNewPairingCode() {
+        try {
+            this.pairingCode = await this.generatePairingCode();
+            this.handlePairingCode(this.pairingCode);
+            return this.pairingCode;
+        } catch (error) {
+            logger.error('Failed to generate pairing code:', error.message);
+            return null;
+        }
+    }
 }
 
-// Katabump-specific process handling
-function setupKatabumpHandlers(bot) {
-    process.on('SIGINT', () => {
-        logger.info('Shutdown signal received');
-        process.exit(0);
-    });
-
-    process.on('uncaughtException', (error) => {
-        logger.error('Crash:', error.message);
-        setTimeout(() => process.exit(1), 1000);
-    });
-
-    process.on('unhandledRejection', (reason) => {
-        logger.warning('Unhandled rejection:', reason);
-    });
+// Pairing code command handler (add to your message handler)
+function handlePairingCommand(sock, message, bot) {
+    const text = message.message?.conversation || '';
+    
+    if (text.toLowerCase() === '/pairingcode') {
+        bot.generateNewPairingCode().then(code => {
+            if (code) {
+                sock.sendMessage(message.key.remoteJid, {
+                    text: `🔐 New pairing code: ${code}\n\nUse this in WhatsApp → Linked Devices → Link a Device → Use pairing code`
+                }, { quoted: message });
+            }
+        });
+        return true;
+    }
+    
+    return false;
 }
 
-// Main execution with Katabump optimizations
+// Update your message handler to include pairing commands
+async function enhancedMessageHandler(sock, m, plugins, store, bot) {
+    if (!m.messages || m.messages.length === 0) return;
+    
+    const message = m.messages[0];
+    
+    // Check for pairing commands first
+    if (handlePairingCommand(sock, message, bot)) {
+        return;
+    }
+    
+    // Then handle normal messages
+    // ... your existing message handling code
+}
+
+// Main execution
 async function main() {
     try {
-        console.log('\n'.repeat(2));
-        console.log('╔══════════════════════════════════════════════╗');
-        console.log('║           BYAKUYA MD - KATABUMP EDITION      ║');
-        console.log('║            WhatsApp Bot Starting...          ║');
+        console.log('\n╔══════════════════════════════════════════════╗');
+        console.log('║           BYAKUYA MD - PAIRING CODE           ║');
+        console.log('║            WhatsApp Bot Starting...           ║');
         console.log('╚══════════════════════════════════════════════╝');
         console.log('\n');
 
         const bot = new ByakuyaBot();
-        setupKatabumpHandlers(bot);
         await bot.initialize();
 
     } catch (error) {
@@ -255,5 +278,18 @@ async function main() {
     }
 }
 
-// Start with error protection
+// Enhanced process handling
+process.on('SIGINT', () => {
+    logger.info('Shutdown signal received');
+    process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+    logger.error('Crash:', error.message);
+    process.exit(1);
+});
+
+// Start the bot
 main().catch(console.error);
+
+module.exports = ByakuyaBot;
