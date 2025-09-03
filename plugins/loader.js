@@ -1,7 +1,7 @@
+// plugins/loader.js
 const fs = require('fs').promises;
 const path = require('path');
 const logger = require('../utils/logger');
-const config = require('../config');
 
 class PluginLoader {
     constructor() {
@@ -14,6 +14,14 @@ class PluginLoader {
         this.plugins = [];
         
         try {
+            // Check if plugins directory exists
+            try {
+                await fs.access(pluginsDir);
+            } catch (err) {
+                logger.error(`Plugins directory ${pluginsDir} does not exist`);
+                return this.plugins;
+            }
+            
             const files = await fs.readdir(pluginsDir);
             
             for (const file of files) {
@@ -24,19 +32,20 @@ class PluginLoader {
                         
                         if (this.validatePlugin(plugin)) {
                             this.plugins.push(plugin);
-                            logger.info(`✅ Loaded plugin: ${plugin.name}`);
+                            logger.success(`Loaded plugin: ${plugin.name}`);
                         } else {
-                            logger.warn(`❌ Invalid plugin structure in: ${file}`);
+                            logger.warning(`Invalid plugin structure in: ${file}`);
                         }
                     } catch (err) {
-                        logger.error(`❌ Failed to load plugin ${file}: ${err.message}`);
+                        logger.error(`Failed to load plugin ${file}: ${err.message}`);
                     }
                 }
             }
         } catch (err) {
-            logger.error('❌ Error reading plugins directory:', err.message);
+            logger.error(`Error reading plugins directory: ${err.message}`);
         }
         
+        logger.info(`Total plugins loaded: ${this.plugins.length}`);
         return this.plugins;
     }
     
@@ -46,15 +55,12 @@ class PluginLoader {
     
     async reloadPlugin(pluginName) {
         try {
-            // Clear require cache
             const pluginPath = require.resolve(path.join(this.pluginDir, `${pluginName}.js`));
             delete require.cache[pluginPath];
             
-            // Reload plugin
             const plugin = require(pluginPath);
             
             if (this.validatePlugin(plugin)) {
-                // Replace the plugin in the array
                 const index = this.plugins.findIndex(p => p.name === pluginName);
                 if (index !== -1) {
                     this.plugins[index] = plugin;
@@ -62,14 +68,14 @@ class PluginLoader {
                     this.plugins.push(plugin);
                 }
                 
-                logger.info(`✅ Reloaded plugin: ${plugin.name}`);
+                logger.success(`Reloaded plugin: ${plugin.name}`);
                 return plugin;
             } else {
-                logger.warn(`❌ Invalid plugin structure after reload: ${pluginName}`);
+                logger.warning(`Invalid plugin structure after reload: ${pluginName}`);
                 return null;
             }
         } catch (err) {
-            logger.error(`❌ Failed to reload plugin ${pluginName}: ${err.message}`);
+            logger.error(`Failed to reload plugin ${pluginName}: ${err.message}`);
             return null;
         }
     }
