@@ -1,4 +1,4 @@
-// index.js - Simplified version without store
+// index.js - Simplified version
 const { Boom } = require('@hapi/boom');
 const makeWASocket = require('@adiwajshing/baileys').default;
 const { useMultiFileAuthState } = require('@adiwajshing/baileys');
@@ -11,20 +11,16 @@ const config = require('./config');
 
 require('dotenv').config();
 
-// Create a simple mock store since makeInMemoryStore is causing issues
+// Create a simple mock store
 const mockStore = {
     bind: () => logger.debug('Store binding called (mock)'),
     readFromFile: () => logger.debug('Store read called (mock)'),
     writeToFile: () => logger.debug('Store write called (mock)'),
-    messages: [],
-    chats: [],
-    contacts: []
 };
 
 async function startBot() {
     try {
         logger.info('🚀 Starting Byakuya MD WhatsApp Bot...');
-        logger.debug('Loading configuration...');
 
         // Load plugins
         logger.loading('Loading plugins...');
@@ -35,20 +31,15 @@ async function startBot() {
         logger.loading('Initializing WhatsApp connection...');
         const { state, saveCreds } = await useMultiFileAuthState('auth_info');
         
+        // Create a minimal logger for Baileys that won't cause issues
+        const baileysLogger = logger.child();
+        
         const sock = makeWASocket({
             printQRInTerminal: false,
             auth: state,
             generateHighQualityLinkPreview: true,
             markOnlineOnConnect: false,
-            // Use minimal logging for Baileys
-            logger: {
-                trace: () => {},
-                debug: () => {},
-                info: () => {},
-                warn: () => {},
-                error: (error) => logger.error('Baileys Error:', error.message),
-                fatal: (error) => logger.fail('Baileys Fatal:', error.message)
-            },
+            logger: baileysLogger, // Use our child logger
             browser: ['Byakuya MD', 'Chrome', '1.0.0']
         });
 
@@ -94,7 +85,6 @@ async function startBot() {
 
     } catch (error) {
         logger.fail('Failed to start bot: ' + error.message);
-        logger.debug('Error details:', error);
         process.exit(1);
     }
 }
@@ -117,7 +107,6 @@ process.on('uncaughtException', (error) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     logger.fail('Unhandled Rejection at:', promise);
-    logger.debug('Reason:', reason);
     process.exit(1);
 });
 
